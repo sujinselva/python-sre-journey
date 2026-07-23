@@ -1,4 +1,4 @@
-name: Python CI
+name: Python CI with Groq Analysis
 
 on:
   push:
@@ -29,14 +29,33 @@ jobs:
         run: python --version
 
       - name: Run all Python files
+        id: run_python
+        continue-on-error: true
         shell: bash
         run: |
-          find Day01 \
+          set -o pipefail
+
+          find Day01 Projects Challenges \
             -type f \
             -name "*.py" \
-            -print0 |
+            -print0 2>/dev/null |
           while IFS= read -r -d '' file; do
             echo "========================================"
             echo "Running: $file"
-            python "$file"
-          done
+
+            if ! python "$file"; then
+              echo "FAILED: $file"
+              exit 1
+            fi
+          done 2>&1 | tee python-errors.log
+
+      - name: Analyze failure with Groq
+        if: steps.run_python.outcome == 'failure'
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: python scripts/analyze_failure.py
+
+      - name: Mark workflow as failed
+        if: always() && steps.run_python.outcome == 'failure'
+        run: exit 1
+        
